@@ -165,8 +165,13 @@ def generate_pdf_report():
     pdf.ln(30)
     pdf.set_font("helvetica", "B", 28)
     pdf.set_text_color(3, 42, 145)
-    pdf.cell(w=0, h=15, text="Gandalf Prompt Injection", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.cell(w=0, h=15, text="Assignment Report", new_x="LMARGIN", new_y="NEXT", align="C")
+
+    pdf.ln(10)
+    pdf.set_font("helvetica", "", 12)
+    pdf.set_text_color(50, 50, 50)
+    pdf.cell(w=95, h=8, text="Omri Asudon 208853598", align="C")
+    pdf.cell(w=95, h=8, text="Dvir Weinman 206397226", new_x="LMARGIN", new_y="NEXT", align="C")
 
     pdf.ln(10)
     pdf.set_font("helvetica", "", 13)
@@ -178,11 +183,11 @@ def generate_pdf_report():
             "the secret password from each level of the Gandalf AI challenge\n"
             "(https://gandalf.lakera.ai/baseline).\n\n"
             "For every level we include:\n"
-            "  - The clue / hint shown by the game\n"
-            "  - The exact prompt (payload) sent to Gandalf\n"
-            "  - A full screenshot showing the prompt and Gandalf's response\n"
-            "  - The password that was revealed\n"
-            "  - A detailed explanation of the attack technique"
+            "- The clue / hint shown by the game\n"
+            "- The exact prompt (payload) sent to Gandalf\n"
+            "- A full screenshot showing the prompt and Gandalf's response\n"
+            "- The password that was revealed\n"
+            "- A detailed explanation of the attack technique"
         ),
     )
 
@@ -196,7 +201,7 @@ def generate_pdf_report():
     pdf.ln(10)
     pdf.set_font("helvetica", "I", 11)
     pdf.set_text_color(120, 120, 120)
-    pdf.cell(w=0, h=8, text="Levels covered: 1 - 3", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(w=0, h=8, text="Levels covered: 1 - 6", new_x="LMARGIN", new_y="NEXT", align="C")
 
     # ── Per-level pages ──
     for lvl in range(1, 4):
