@@ -5,6 +5,7 @@ import hashlib
 import base64
 import os
 import jinja2
+import markupsafe
 import logging
 
 from . import validation_utilities
@@ -65,7 +66,10 @@ def add_message(args: dict):
     for validator_name, validator in VALIDATORS.items():
         if validator_name in result:
             validator(result[validator_name])
-    result["message"] = jinja2.Markup(result["message"])
+    try:
+        result["message"] = markupsafe.Markup(result["message"])
+    except AttributeError:
+        result["message"] = jinja2.Markup(result["message"])
     if is_administrator_logged_in():
         result["name"] = result["name"] + " (Administrator)"
 
@@ -139,7 +143,19 @@ def start_app():
     app.secret_key = secret_key
     app.config["SESSION_COOKIE_HTTPONLY"] = False
 
-    app.run(host="0.0.0.0")
+    cert_path = "cert.pem"
+    key_path = "key.pem"
+    if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cert_path = os.path.join(base_dir, "cert.pem")
+        key_path = os.path.join(base_dir, "key.pem")
+
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        app.logger.info("Starting server with HTTPS...")
+        app.run(host="0.0.0.0", port=5000, ssl_context=(cert_path, key_path))
+    else:
+        app.logger.info("Starting server with HTTP...")
+        app.run(host="0.0.0.0", port=5000)
 
 
 if __name__ == "__main__":
