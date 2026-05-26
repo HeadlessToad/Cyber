@@ -590,9 +590,9 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
     
     # Meta Box
     meta_data = [
+        [Paragraph("Submitters:", style_body), Paragraph("Omri Asudon (208853598)<br/>Dvir Weinman (206397226)", style_meta)],
         [Paragraph("Submission Date:", style_body), Paragraph("June 02, 2026", style_meta)],
         [Paragraph("Course:", style_body), Paragraph("Secure Programming - Assignment 3", style_meta)],
-        [Paragraph("Status:", style_body), Paragraph("Tasks A, B, C, D & E Complete - In Progress", style_meta)],
     ]
     t_meta = Table(meta_data, colWidths=[110, 150])
     t_meta.setStyle(TableStyle([
@@ -609,32 +609,6 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
     story.append(t_meta_outer)
     
     story.append(PageBreak())
-
-    # =============================================================
-    # TABLE OF CONTENTS / INTRO
-    # =============================================================
-    story.append(Paragraph("Report Outline", style_h1))
-    story.append(Spacer(1, 5))
-    
-    outline_data = [
-        [Paragraph("<b>Section</b>", style_meta), Paragraph("<b>Status</b>", style_meta), Paragraph("<b>Page</b>", style_meta)],
-        [Paragraph("A. Adding a Digital Certificate (HTTPS Setup)", style_body), Paragraph("COMPLETED", style_meta), Paragraph("3", style_body)],
-        [Paragraph("B. Stored XSS & Parser Discrepancies", style_body), Paragraph("COMPLETED", style_meta), Paragraph("4", style_body)],
-        [Paragraph("C. Analysis of &lt;object&gt; Tag Restrictions", style_body), Paragraph("COMPLETED", style_meta), Paragraph("5", style_body)],
-        [Paragraph("D. Codebase Vulnerability Remediation", style_body), Paragraph("COMPLETED", style_meta), Paragraph("6", style_body)],
-        [Paragraph("E, F, G. Advanced Cyber Security Concepts", style_body), Paragraph("IN PROGRESS", style_meta), Paragraph("7", style_body)],
-    ]
-    t_outline = Table(outline_data, colWidths=[300, 120, 80])
-    t_outline.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), c_code_bg),
-        ('LINEBELOW', (0,0), (-1,0), 1.5, c_primary),
-        ('LINEBELOW', (0,1), (-1,-1), 0.5, c_border),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-    ]))
-    story.append(t_outline)
-    story.append(Spacer(1, 20))
     
     # =============================================================
     # SECTION A: HTTPS SETUP
@@ -642,7 +616,6 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
     data = get_report_data()
     sec_a = data["section_a"]
     
-    story.append(PageBreak())
     story.append(Paragraph(sec_a["title"], style_h1))
     story.append(Paragraph(sec_a["intro"], style_body))
     story.append(Spacer(1, 10))
