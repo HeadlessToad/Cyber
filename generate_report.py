@@ -165,10 +165,304 @@ def get_report_data():
         ]
     }
     
+    # -------------------------------------------------------------
+    # SECTION B CONTENT
+    # -------------------------------------------------------------
+    data["section_b"] = {
+        "title": "B. Stored XSS & Parser Discrepancies",
+        "intro": (
+            "This section details the theoretical analysis and architectural design of a Stored Cross-Site "
+            "Scripting (XSS) attack on the <b>XSSApp</b> website. The analysis explores how a vulnerability "
+            "emerges from a parser discrepancy between server-side HTML validators and browser rendering engines, "
+            "allowing a low-privileged user to impersonate the administrator and execute privileged actions (such as data deletion)."
+        ),
+        "parser_discrepancy_title": "The Flaw: BeautifulSoup vs. Browser DOM Reconstruction",
+        "parser_discrepancy_desc": (
+            "The root vulnerability lies in <code>validation_utilities.validate_message()</code>. The function attempts "
+            "to validate user input by parsing it with BeautifulSoup (using Python's built-in <code>html.parser</code>) "
+            "and checking for the presence of <code>&lt;script&gt;</code> tags or any attributes starting with <code>on</code> "
+            "(event handlers like <code>onerror</code>).<br/><br/>"
+            "This validation approach introduces a severe **parser discrepancy**:<br/>"
+            "1. **BeautifulSoup's Strict Parsing**: When given highly broken or malformed HTML tags (such as unclosed brackets, "
+            "unusual slashes, or nested tags like <code>&lt;&lt;script&gt;alert(1)&lt;/script&gt;</code>), Python's strict "
+            "<code>html.parser</code> frequently fails to resolve the malformed segments as standard elements. Consequently, "
+            "BeautifulSoup does not register them as active tags or find any attributes matching the blacklist, allowing the "
+            "string to pass validation.<br/>"
+            "2. **Browser's Lenient Normalization**: When the browser (e.g., Chrome's Blink engine) receives the raw "
+            "malformed string, it uses highly permissive error-recovery algorithms to reconstruct a valid Document Object Model (DOM). "
+            "Chrome successfully normalizes the malformed markup, closes the unclosed brackets, and renders/executes the "
+            "resulting JavaScript payload."
+        ),
+        "attack_flow_title": "Conceptual Attack Architecture",
+        "steps": [
+            {
+                "name": "1. Storing the Payload (Stored/Persistent Vector)",
+                "desc": (
+                    "A low-privileged ('weak') user posts a contact request containing the malformed HTML payload. "
+                    "Because the payload bypasses the BeautifulSoup blacklist, the server accepts the input and "
+                    "stores it raw in the global <code>messages</code> database."
+                )
+            },
+            {
+                "name": "2. Insecure Rendering Context",
+                "desc": (
+                    "When the administrator logs in and views the homepage (<code>/</code>), the Flask application "
+                    "fetches the stored messages. Because the message is wrapped in <code>Markup</code> (which disables "
+                    "Jinja2 auto-escaping), the server transmits the raw malformed string directly to the admin's browser."
+                )
+            },
+            {
+                "name": "3. Execution & Impersonation (Session Riding / Hijacking)",
+                "desc": (
+                    "The administrator's browser parses the malformed string, normalizes it, and executes the injected script "
+                    "within the active administrative session. The script executes same-origin requests (e.g., using "
+                    "<code>fetch('/drop_all_messages')</code>) in the background. Since the browser automatically includes "
+                    "the administrator's session cookie, the server authenticates the request and executes the administrative "
+                    "command, successfully deleting all messages on behalf of the low-privileged user."
+                )
+            },
+            {
+                "name": "4. Listening Server Backend (High-Level Design)",
+                "desc": (
+                    "If the session cookie lacks <code>HttpOnly</code>, the injected script can exfiltrate the token value "
+                    "to a local listening server. The listener can be structured conceptually as a basic HTTP server "
+                    "(using Python's <code>http.server</code> or the <code>requests</code> library) that logs incoming "
+                    "GET parameters. For example:<br/>"
+                    "<code>python -m http.server 8080</code><br/>"
+                    "The XSS payload sends the session identifier to the listener: <code>http://127.0.0.1:8080/?cookie=value</code>. "
+                    "The attacker logs the token, imports it into their browser, and gains full administrative persistence."
+                )
+            }
+        ]
+    }
+
+    # -------------------------------------------------------------
+    # SECTION C CONTENT
+    # -------------------------------------------------------------
+    data["section_c"] = {
+        "title": "C. Analysis of &lt;object&gt; Tag Restrictions",
+        "intro": (
+            "This section analyzes the security restrictions applied to the HTML <code>&lt;object&gt;</code> tag "
+            "when loaded with active MIME types such as <code>text/x-scriptlet</code>. We examine the theoretical "
+            "mechanics of why modern web browsers systematically block cookie exfiltration attempts via this attack vector."
+        ),
+        "how_it_works_title": "Historical Context: HTML Scriptlets and ActiveX Control",
+        "how_it_works_desc": (
+            "Historically, in legacy Microsoft Internet Explorer (IE4 through IE11), <b>HTML Scriptlets</b> "
+            "(defined using <code>&lt;object type=\"text/x-scriptlet\" data=\"URL\"&gt;</code>) were proprietary components "
+            "allowing developers to encapsulate dynamic, scripting-capable HTML pages into reusable objects. "
+            "Crucially, these objects could execute scripts directly inside the parent page's security context, allowing "
+            "the embedded scriptlet document to access host elements and read <code>document.cookie</code>, bypass sandboxes, "
+            "and exfiltrate session data."
+        ),
+        "why_it_fails_title": "Why the Attack Fails in Modern Browsers (Blink, WebKit, Gecko)",
+        "reasons": [
+            {
+                "name": "1. Deprecation and Deletion of Legacy Technologies",
+                "desc": (
+                    "HTML Scriptlets and active content handlers (including Silverlight, Java Applets, and ActiveX) have been "
+                    "completely deprecated and permanently removed from modern browser engines. Modern browsers (Chrome, Edge, Firefox, "
+                    "and Safari) do not register or recognize the <code>text/x-scriptlet</code> MIME type. When Chrome processes "
+                    "<code>&lt;object type=\"text/x-scriptlet\" data=\"...\"&gt;</code>, it ignores the proprietary scriptlet handler "
+                    "entirely and treats the element as an unresolvable type, blocking all script execution."
+                )
+            },
+            {
+                "name": "2. Strict Same-Origin Policy (SOP) Boundaries",
+                "desc": (
+                    "Modern browsers treat standard <code>&lt;object&gt;</code>, <code>&lt;iframe&gt;</code>, and "
+                    "<code>&lt;embed&gt;</code> elements as separate, nested browsing contexts (documents). Even if the embedded "
+                    "object could load and execute a script internally (e.g., as a standard HTML document), the <b>Same-Origin Policy (SOP)</b> "
+                    "strictly blocks any cross-document interaction unless the nested document is loaded from the exact same protocol, "
+                    "domain, and port as the parent document. If loaded from an external origin, any attempt by the object's internal "
+                    "script to read <code>window.parent.document.cookie</code> throws a fatal <code>DOMException</code> (Cross-Origin Blocked)."
+                )
+            },
+            {
+                "name": "3. Sandboxing and Security Policy Directives (CSP)",
+                "desc": (
+                    "Modern browser environments support secure sandboxing controls (e.g., CSP headers like <code>object-src 'none'</code>) "
+                    "which completely restrict the instantiation of plugins or executable documents inside <code>&lt;object&gt;</code> "
+                    "tags, providing a hard, client-side cryptographic barrier against plugin-based exploitation."
+                )
+            }
+        ]
+    }
+    
+    # -------------------------------------------------------------
+    # SECTION D CONTENT
+    # -------------------------------------------------------------
+    data["section_d"] = {
+        "title": "D. Codebase Vulnerability Remediation",
+        "intro": (
+            "This section presents four critical security remediation patches implemented within the "
+            "<b>XSSApp</b> codebase (specifically inside <code>app.py</code>). These patches address "
+            "vulnerabilities in session security, cryptographic password verification, unsafe HTML output "
+            "rendering, and process-start session invalidation."
+        ),
+        "vulnerabilities": [
+            {
+                "name": "1. Hardening Session Cookies (Mitigating Session Hijacking)",
+                "type": "Session Hijacking / Insecure Cookie Configuration",
+                "flaw_desc": (
+                    "Originally, the Flask server explicitly disabled script protection on its session cookies "
+                    "by setting <code>app.config[\"SESSION_COOKIE_HTTPONLY\"] = False</code>. This critical "
+                    "misconfiguration exposed the active session identifier directly to client-side scripts "
+                    "via <code>document.cookie</code>, enabling immediate and complete session theft in the event "
+                    "of any XSS compromise."
+                ),
+                "patch_desc": (
+                    "To mitigate this risk, we enabled the <code>HttpOnly</code> directive. In addition, "
+                    "we configured the <code>Secure</code> flag to restrict cookie transmission strictly to HTTPS "
+                    "connections, and added the <code>SameSite='Lax'</code> directive to block cross-site request "
+                    "forgery (CSRF) session riding attacks:"
+                ),
+                "code": (
+                    "# Secure session cookies configuration\n"
+                    "app.config[\"SESSION_COOKIE_HTTPONLY\"] = True\n"
+                    "app.config[\"SESSION_COOKIE_SECURE\"] = True\n"
+                    "app.config[\"SESSION_COOKIE_SAMESITE\"] = 'Lax'"
+                )
+            },
+            {
+                "name": "2. Salted Password Hashing via Scrypt KDF (Credential Protection)",
+                "type": "Insecure Password Hashing & Static Comparisons",
+                "flaw_desc": (
+                    "The administrator password check originally used a simple unsalted SHA-256 hash comparison. "
+                    "Unsalted hashes are highly vulnerable to rapid precomputation attacks using offline dictionary lists "
+                    "or pre-compiled rainbow tables. In addition, the static password hash was hardcoded directly in "
+                    "the source code."
+                ),
+                "patch_desc": (
+                    "We replaced the unsalted SHA-256 check with Werkzeug's secure key derivation functions. "
+                    "We generated a salted scrypt hash of the administrator password (utilizing 32,768 work iterations, "
+                    "a block size of 8, and a parallelization factor of 1) and integrated <code>check_password_hash</code> "
+                    "to perform cryptographically secure comparisons that are highly resistant to offline brute-force attacks:"
+                ),
+                "code": (
+                    "from werkzeug.security import check_password_hash\n\n"
+                    "def test_administrator_password(password: str):\n"
+                    "    # Salted hash generated using scrypt (standard Werkzeug format)\n"
+                    "    hashed_password = (\n"
+                    "        \"scrypt:32768:8:1$KAaN1iT6BRmDlHL3$d68bdf6457a5218183113be9dc53d875\"\n"
+                    "        \"9d0f8d05e6d15be1f6e024dbaaab817a17a0b6900d7d286cdac7baa4442faed7aba\"\n"
+                    "        \"8ef61b5a0c2007ca867e145331571\"\n"
+                    "    )\n"
+                    "    return check_password_hash(hashed_password, password)"
+                )
+            },
+            {
+                "name": "3. Enforcing Template Auto-Escaping (Eliminating Stored XSS)",
+                "type": "Unsafe HTML Rendering / Markup Bypass",
+                "flaw_desc": (
+                    "To support formatted text, the server originally wrapped the user-submitted <code>message</code> "
+                    "field inside a <code>jinja2.Markup()</code> block before appending it to the global messages list. "
+                    "This tells the template engine that the string contains safe HTML, completely disabling Jinja2's "
+                    "built-in context-aware auto-escaping. As a result, any HTML or JavaScript injected into the message field "
+                    "was rendered raw and executed directly in the browser of any user viewing the homepage."
+                ),
+                "patch_desc": (
+                    "Rather than attempting to filter out tags using custom validation, the secure and correct remedy "
+                    "is to let the template engine escape the user input. We removed the unsafe <code>Markup</code> "
+                    "wrapping entirely. Now, all user-submitted inputs are stored as raw text, and Jinja2 automatically "
+                    "encodes special characters (such as <code>&lt;</code> and <code>&gt;</code>) into safe text entities, "
+                    "making Stored XSS completely impossible:"
+                ),
+                "code": (
+                    "def add_message(args: dict):\n"
+                    "    required_args = [\"name\", \"phone_number\", \"email\", \"subject\", \"message\"]\n"
+                    "    result = {name: args.get(name) for name in required_args}\n"
+                    "    for validator_name, validator in VALIDATORS.items():\n"
+                    "        if validator_name in result:\n"
+                    "            validator(result[validator_name])\n"
+                    "    # Removed Markup wrapper to let Jinja2 automatically auto-escape output safely!\n"
+                    "    if is_administrator_logged_in():\n"
+                    "        result[\"name\"] = result[\"name\"] + \" (Administrator)\"\n\n"
+                    "    messages.append(result)"
+                )
+            },
+            {
+                "name": "4. Persistent Application Secret Key (Session Lifecycle)",
+                "type": "Ephemeral Cryptographic Secret Key Configuration",
+                "flaw_desc": (
+                    "The application's cryptographic <code>secret_key</code> was originally generated as 16 random bytes "
+                    "on every application start. This meant that whenever the server was restarted or reloaded, all existing "
+                    "user sessions, CSRF tokens, and signed cookies were instantly invalidated, resulting in immediate user logout "
+                    "and broken active requests."
+                ),
+                "patch_desc": (
+                    "We standardized secret key loading to read from the <code>FLASK_SECRET_KEY</code> environment variable "
+                    "first. If not configured, it loads from a persistent local file (<code>.secret_key</code>) that is generated "
+                    "safely on first boot. This ensures consistent session states across server restarts while maintaining high cryptographic entropy:"
+                ),
+                "code": (
+                    "def start_app():\n"
+                    "    # Load secret key persistently to avoid session invalidation on restart\n"
+                    "    secret_key = os.environ.get(\"FLASK_SECRET_KEY\")\n"
+                    "    if not secret_key:\n"
+                    "        secret_key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), \".secret_key\")\n"
+                    "        if os.path.exists(secret_key_file):\n"
+                    "            with open(secret_key_file, \"rb\") as f:\n"
+                    "                secret_key = f.read()\n"
+                    "        else:\n"
+                    "            secret_key = generate_random_key()\n"
+                    "            with open(secret_key_file, \"wb\") as f:\n"
+                    "                f.write(secret_key)"
+                )
+            }
+        ]
+    }
+
+    # -------------------------------------------------------------
+    # SECTION E CONTENT
+    # -------------------------------------------------------------
+    data["section_e"] = {
+        "title": "E. Session Riding & Bypassing HttpOnly Cookie Protections",
+        "intro": (
+            "This section explains the theoretical mechanics of how an attacker can successfully execute the "
+            "actions in Section B (specifically, deleting all messages on the server) even if the administrator "
+            "session cookie was configured with the <code>HttpOnly</code> directive. We analyze how XSS-based "
+            "<b>Session Riding</b> and DOM access completely bypass this security boundary."
+        ),
+        "mechanism_title": "The Mechanism of Session Riding / Client-Side Request Forgery",
+        "mechanism_desc": (
+            "The <code>HttpOnly</code> flag is a vital defense-in-depth control that strictly prevents client-side scripts "
+            "(such as JavaScript injected via XSS) from reading the <code>document.cookie</code> property. "
+            "This completely stops the script from exfiltrating the raw session identifier back to the attacker. "
+            "However, <code>HttpOnly</code> **does not** prevent the browser from automatically attaching the session cookie "
+            "to any outgoing HTTP requests sent back to the application's origin."
+        ),
+        "steps": [
+            {
+                "name": "1. Direct HTTP Requests (Same-Origin Fetch)",
+                "desc": (
+                    "Because the injected script executes inside the victim's active browser context (under the same origin), "
+                    "any HTTP request the script makes to the server automatically includes all relevant cookies (including "
+                    "<code>HttpOnly</code> ones). To trigger the deletion of all messages, the attacker does not need to know the "
+                    "actual session token value. The script can simply issue a same-origin background fetch request to the administrative "
+                    "endpoint:<br/>"
+                    "<code>fetch('/drop_all_messages')</code><br/>"
+                    "The browser seamlessly attaches the administrator's cookie, and the server executes the action."
+                )
+            },
+            {
+                "name": "2. Bypassing CSRF Token Protection",
+                "desc": (
+                    "If the application enforces anti-CSRF token verification (as in the <code>/request</code> route using <code>csrf_token</code>), "
+                    "a simple cross-site request would fail. However, because the script runs inside the same origin due to XSS, the script "
+                    "has **full read and write access to the page's DOM**. The script can execute a multi-step payload:<br/>"
+                    "a) Perform a background GET request to the homepage (<code>/</code>).<br/>"
+                    "b) Parse the response HTML to locate the hidden input field containing the anti-CSRF token value: "
+                    "<code>&lt;input type=\"hidden\" name=\"csrf_token\" value=\"TOKEN\"&gt;</code>.<br/>"
+                    "c) Extract the token value from the DOM and include it in the POST request body sent to the protected endpoint.<br/>"
+                    "This demonstrates why **XSS completely neutralizes CSRF protection**; once an attacker can execute script on the origin, "
+                    "they can read any client-side tokens and bypass all anti-forgery validations."
+                )
+            }
+        ]
+    }
+
     # Placeholder for subsequent sections
-    # data["section_c"] = ...
-    # data["section_d"] = ...
-    # data["section_e"] = ...
     # data["section_f_g"] = ...
 
     return data
@@ -298,7 +592,7 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
     meta_data = [
         [Paragraph("Submission Date:", style_body), Paragraph("June 02, 2026", style_meta)],
         [Paragraph("Course:", style_body), Paragraph("Secure Programming - Assignment 3", style_meta)],
-        [Paragraph("Status:", style_body), Paragraph("Task A Complete - In Progress", style_meta)],
+        [Paragraph("Status:", style_body), Paragraph("Tasks A, B, C, D & E Complete - In Progress", style_meta)],
     ]
     t_meta = Table(meta_data, colWidths=[110, 150])
     t_meta.setStyle(TableStyle([
@@ -325,9 +619,10 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
     outline_data = [
         [Paragraph("<b>Section</b>", style_meta), Paragraph("<b>Status</b>", style_meta), Paragraph("<b>Page</b>", style_meta)],
         [Paragraph("A. Adding a Digital Certificate (HTTPS Setup)", style_body), Paragraph("COMPLETED", style_meta), Paragraph("3", style_body)],
-        [Paragraph("C. Analysis of &lt;object&gt; Tag Restrictions", style_body), Paragraph("PENDING", style_body), Paragraph("-", style_body)],
-        [Paragraph("D. Codebase Vulnerability Remediation", style_body), Paragraph("PENDING", style_body), Paragraph("-", style_body)],
-        [Paragraph("E, F, G. Advanced Cyber Security Concepts", style_body), Paragraph("PENDING", style_body), Paragraph("-", style_body)],
+        [Paragraph("B. Stored XSS & Parser Discrepancies", style_body), Paragraph("COMPLETED", style_meta), Paragraph("4", style_body)],
+        [Paragraph("C. Analysis of &lt;object&gt; Tag Restrictions", style_body), Paragraph("COMPLETED", style_meta), Paragraph("5", style_body)],
+        [Paragraph("D. Codebase Vulnerability Remediation", style_body), Paragraph("COMPLETED", style_meta), Paragraph("6", style_body)],
+        [Paragraph("E, F, G. Advanced Cyber Security Concepts", style_body), Paragraph("IN PROGRESS", style_meta), Paragraph("7", style_body)],
     ]
     t_outline = Table(outline_data, colWidths=[300, 120, 80])
     t_outline.setStyle(TableStyle([
@@ -383,6 +678,111 @@ def build_pdf(filename="Exercise_3_Solution_Report.pdf"):
             
         elements.append(Spacer(1, 15))
         story.append(KeepTogether(elements))
+
+    # =============================================================
+    # SECTION B: STORED XSS & PARSER DISCREPANCIES
+    # =============================================================
+    if "section_b" in data:
+        sec_b = data["section_b"]
+        story.append(PageBreak())
+        story.append(Paragraph(sec_b["title"], style_h1))
+        story.append(Paragraph(sec_b["intro"], style_body))
+        story.append(Spacer(1, 10))
+        
+        story.append(Paragraph(sec_b["parser_discrepancy_title"], style_h2))
+        story.append(Paragraph(sec_b["parser_discrepancy_desc"], style_body))
+        story.append(Spacer(1, 15))
+        
+        story.append(Paragraph(sec_b["attack_flow_title"], style_h2))
+        
+        for step in sec_b["steps"]:
+            elements = []
+            elements.append(Paragraph(f"<b>{step['name']}</b>", style_h2))
+            elements.append(Paragraph(step["desc"], style_body))
+            elements.append(Spacer(1, 10))
+            story.append(KeepTogether(elements))
+
+    # =============================================================
+    # SECTION C: OBJECT TAG ANALYSIS
+    # =============================================================
+    if "section_c" in data:
+        sec_c = data["section_c"]
+        story.append(PageBreak())
+        story.append(Paragraph(sec_c["title"], style_h1))
+        story.append(Paragraph(sec_c["intro"], style_body))
+        story.append(Spacer(1, 10))
+        
+        story.append(Paragraph(sec_c["how_it_works_title"], style_h2))
+        story.append(Paragraph(sec_c["how_it_works_desc"], style_body))
+        story.append(Spacer(1, 10))
+        
+        story.append(Paragraph(sec_c["why_it_fails_title"], style_h2))
+        
+        for reason in sec_c["reasons"]:
+            elements = []
+            elements.append(Paragraph(f"<b>{reason['name']}</b>", style_h2))
+            elements.append(Paragraph(reason["desc"], style_body))
+            elements.append(Spacer(1, 10))
+            story.append(KeepTogether(elements))
+
+    # =============================================================
+    # SECTION D: VULNERABILITY REMEDIATION
+    # =============================================================
+    if "section_d" in data:
+        sec_d = data["section_d"]
+        story.append(PageBreak())
+        story.append(Paragraph(sec_d["title"], style_h1))
+        story.append(Paragraph(sec_d["intro"], style_body))
+        story.append(Spacer(1, 10))
+        
+        for vuln in sec_d["vulnerabilities"]:
+            elements = []
+            elements.append(Paragraph(f"<b>{vuln['name']}</b>", style_h2))
+            elements.append(Paragraph(f"<b>Vulnerability Classification:</b> {vuln['type']}", style_body))
+            elements.append(Paragraph(f"<b>Security Flaw Analysis:</b>", style_body))
+            elements.append(Paragraph(vuln["flaw_desc"], style_body))
+            elements.append(Paragraph(f"<b>Applied Mitigation Patch:</b>", style_body))
+            elements.append(Paragraph(vuln["patch_desc"], style_body))
+            
+            if "code" in vuln:
+                # Code box styling
+                code_lines = vuln["code"].split('\n')
+                code_paragraphs = [Paragraph(line.replace(' ', '&nbsp;').replace('\t', '&nbsp;&nbsp;&nbsp;&nbsp;'), style_code) for line in code_lines]
+                t_code = Table([[code_paragraphs]], colWidths=[500])
+                t_code.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,-1), c_code_bg),
+                    ('BOX', (0,0), (-1,-1), 0.5, c_border),
+                    ('TOPPADDING', (0,0), (-1,-1), 8),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                    ('LEFTPADDING', (0,0), (-1,-1), 10),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 10),
+                ]))
+                elements.append(Spacer(1, 5))
+                elements.append(t_code)
+                
+            elements.append(Spacer(1, 15))
+            story.append(KeepTogether(elements))
+
+    # =============================================================
+    # SECTION E: SESSION RIDING (HTTPONLY BYPASS)
+    # =============================================================
+    if "section_e" in data:
+        sec_e = data["section_e"]
+        story.append(PageBreak())
+        story.append(Paragraph(sec_e["title"], style_h1))
+        story.append(Paragraph(sec_e["intro"], style_body))
+        story.append(Spacer(1, 10))
+        
+        story.append(Paragraph(sec_e["mechanism_title"], style_h2))
+        story.append(Paragraph(sec_e["mechanism_desc"], style_body))
+        story.append(Spacer(1, 10))
+        
+        for step in sec_e["steps"]:
+            elements = []
+            elements.append(Paragraph(f"<b>{step['name']}</b>", style_h2))
+            elements.append(Paragraph(step["desc"], style_body))
+            elements.append(Spacer(1, 15))
+            story.append(KeepTogether(elements))
 
     # Build the document
     doc.build(story, canvasmaker=NumberedCanvas)
