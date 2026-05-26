@@ -1,0 +1,15 @@
+MANIFEST.in
+requirements.txt
+setup.py
+XSSApp/__init__.py
+XSSApp/__main__.py
+XSSApp/app.py
+XSSApp/validation_utilities.py
+XSSApp.egg-info/PKG-INFO
+XSSApp.egg-info/SOURCES.txt
+XSSApp.egg-info/dependency_links.txt
+XSSApp.egg-info/entry_points.txt
+XSSApp.egg-info/requires.txt
+XSSApp.egg-info/top_level.txt
+XSSApp/static/favicon.ico
+XSSApp/templates/index.html
